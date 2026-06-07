@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Hammad's Forest Adventure - Birthday Edition</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffd6ec;
+    font-family: "Trebuchet MS", Arial, sans-serif;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    margin: 0 auto;
+    background: #ffd6ec;
+    image-rendering: pixelated;
+  }
+  #errorBox {
+    position: fixed;
+    left: 20px;
+    top: 20px;
+    right: 20px;
+    padding: 15px;
+    background: #fff;
+    color: #b00020;
+    border: 3px solid #b00020;
+    font-family: monospace;
+    display: none;
+    z-index: 9999;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<div id="errorBox"></div>
+<canvas id="gameCanvas" width="960" height="540"></canvas>
+
+<script>
+try {
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const W = canvas.width;
+const H = canvas.height;
+const keys = {};
+
+// Background forest ambience.
+// Keep music.mp3 in the same GitHub folder as this HTML file.
+let soundOn = true;
+let bgMusic = new Audio("music.mp3");
+bgMusic.loop = true;
+bgMusic.volume = 0.23;
+
+function startBackgroundSound() {
+  if (!soundOn) return;
+  bgMusic.play().catch(() => {});
+}
+
+function toggleSound() {
+  soundOn = !soundOn;
+  if (soundOn) bgMusic.play().catch(() => {});
+  else bgMusic.pause();
+}
+
+let gameState = "title";
+let levelIndex = 0;
+let frame = 0;
+
+let collectedHearts = 0;
+let collectedBalloons = 0;
+let collectedFlowers = 0;
+let collectedSusubumbers = 0;
+let collectedGifts = {
+  hearts: false,
+  balloons: false,
+  flowers: false,
+  wizard: false,
+  susubumbers: false,
+  cake: false
+};
+
+let messageText = "";
+let messageTimer = 0;
+let dialogueQueue = [];
+let messageSpeaker = "";
+
+let finalHearts = [];
+let confetti = [];
+
+const player = {
+  x: 90,
+  y: 390,
+  w: 34,
+  h: 58,
+  vx: 0,
+  vy: 0,
+  speed: 4,
+  jump: 12,
+  onGround: false,
+  facing: 1
+};
+
+const levels = [
+  {
+    name: "Birthday Morning Forest",
+    mission: "Mission: Collect 5 hearts, then walk right.",
+    type: "hearts",
+    sky: "#ffd1ec",
+    ground: "#8fd889",
+    platforms: [
+      {x:0,y:465,w:960,h:80},
+      {x:150,y:410,w:125,h:24},
+      {x:310,y:360,w:130,h:24},
+      {x:500,y:315,w:140,h:24},
+      {x:690,y:375,w:145,h:24},
+      {x:825,y:425,w:105,h:24}
+    ],
+    collectibles: [
+      {x:200,y:360,type:"heart",got:false},
+      {x:350,y:310,type:"heart",got:false},
+      {x:545,y:265,type:"heart",got:false},
+      {x:735,y:325,type:"heart",got:false},
+      {x:875,y:375,type:"heart",got:false}
+    ],
+    npc: null,
+    complete: false
+  },
+  {
+    name: "Balloon Path",
+    mission: "Mission: Collect 5 balloons for the birthday trail.",
+    type: "balloons",
+    sky: "#ffc4e6",
+    ground: "#91d88b",
+    platforms: [
+      {x:0,y:465,w:960,h:80},
+      {x:150,y:390,w:125,h:24},
+      {x:330,y:335,w:140,h:24},
+      {x:535,y:380,w:130,h:24},
+      {x:700,y:330,w:135,h:24}
+    ],
+    collectibles: [
+      {x:190,y:340,type:"balloon",got:false},
+      {x:370,y:285,type:"balloon",got:false},
+      {x:575,y:330,type:"balloon",got:false},
+      {x:740,y:280,type:"balloon",got:false},
+      {x:875,y:405,type:"balloon",got:false}
+    ],
+    npc: null,
+    complete: false
+  },
+  {
+    name: "Flower Climb",
+    mission: "Mission: Collect 5 flowers, then walk right.",
+    type: "flowers",
+    sky: "#ffe0f1",
+    ground: "#95de8e",
+    platforms: [
+      {x:0,y:465,w:960,h:80},
+      {x:125,y:410,w:125,h:24},
+      {x:285,y:365,w:120,h:24},
+      {x:450,y:315,w:125,h:24},
+      {x:615,y:270,w:135,h:24},
+      {x:780,y:355,w:130,h:24}
+    ],
+    collectibles: [
+      {x:165,y:360,type:"flower",got:false},
+      {x:325,y:315,type:"flower",got:false},
+      {x:490,y:265,type:"flower",got:false},
+      {x:655,y:220,type:"flower",got:false},
+      {x:830,y:305,type:"flower",got:false}
+    ],
+    npc: null,
+    complete: false
+  },
+  {
+    name: "Wizard Clearing",
+    mission: "Mission: Meet the wizard.",
+    type: "wizard",
+    sky: "#ffd2ea",
+    ground: "#95dd91",
+    platforms: [
+      {x:0,y:465,w:960,h:80},
+      {x:180,y:400,w:130,h:24},
+      {x:390,y:350,w:145,h:24},
+      {x:600,y:390,w:135,h:24}
+    ],
+    collectibles: [],
+    npc: {name:"Wizard", x:735, y:398, kind:"wizard"},
+    complete: false
+  },
+  {
+    name: "Susubumber Grove",
+    mission: "Mission: Collect 6 susubumbers to reach Dambolino.",
+    type: "susubumbers",
+    sky: "#ffc9e8",
+    ground: "#90d889",
+    platforms: [
+      {x:0,y:465,w:960,h:80},
+      {x:130,y:410,w:125,h:24},
+      {x:285,y:365,w:120,h:24},
+      {x:450,y:320,w:125,h:24},
+      {x:615,y:280,w:135,h:24},
+      {x:780,y:355,w:130,h:24}
+    ],
+    collectibles: [
+      {x:170,y:360,type:"susubumber",got:false},
+      {x:325,y:315,type:"susubumber",got:false},
+      {x:490,y:270,type:"susubumber",got:false},
+      {x:655,y:230,type:"susubumber",got:false},
+      {x:830,y:305,type:"susubumber",got:false},
+      {x:900,y:415,type:"susubumber",got:false}
+    ],
+    npc: null,
+    complete: false
+  },
+  {
+    name: "Dambolino's Cake Clearing",
+    mission: "Mission: Reach Subul for the final surprise.",
+    type: "final",
+    sky: "#ffc2e0",
+    ground: "#8edb91",
+    platforms: [
+      {x:0,y:465,w:960,h:80},
+      {x:175,y:405,w:135,h:24},
+      {x:370,y:350,w:145,h:24},
+      {x:580,y:395,w:135,h:24},
+      {x:710,y:345,w:150,h:24}
+    ],
+    collectibles: [],
+    npc: {name:"Subul", x:760, y:278, kind:"subulFinal"},
+    complete: false
+  }
+];
+
+function resetPlayer() {
+  player.x = 80;
+  player.y = 380;
+  player.vx = 0;
+  player.vy = 0;
+  player.onGround = false;
+}
+
+function startGame() {
+  startBackgroundSound();
+  gameState = "playing";
+  levelIndex = 0;
+  collectedHearts = 0;
+  collectedBalloons = 0;
+  collectedFlowers = 0;
+  collectedSusubumbers = 0;
+  collectedGifts = { hearts:false, balloons:false, flowers:false, wizard:false, susubumbers:false, cake:false };
+  finalHearts = [];
+  confetti = [];
+  dialogueQueue = [];
+  levels.forEach(level => {
+    level.complete = false;
+    level.collectibles.forEach(c => c.got = false);
+  });
+  resetPlayer();
+  showDialogue([
+    {speaker:"Forest", text:"Hammad wakes up in a pink birthday forest. Little hearts are waiting for him."},
+    {speaker:"Hammad", text:"Aww... where am I? This place is so cute!"},
+    {speaker:"Forest", text:"Collect the hearts first, Bambolino. The forest has a surprise path for you."}
+  ]);
+}
+
+function showMessage(text, speaker) {
+  messageText = text;
+  messageSpeaker = speaker || "";
+  messageTimer = 330;
+}
+
+function showDialogue(lines) {
+  dialogueQueue = lines.slice();
+  showNextDialogue();
+}
+
+function showNextDialogue() {
+  if (dialogueQueue.length > 0) {
+    const line = dialogueQueue.shift();
+    showMessage(line.text, line.speaker);
+  }
+}
+
+function nextLevel() {
+  levelIndex++;
+  if (levelIndex >= levels.length) {
+    gameState = "ending";
+    return;
+  }
+  resetPlayer();
+
+  const t = levels[levelIndex].type;
+  if (t === "balloons") showDialogue([
+    {speaker:"Forest", text:"The hearts sparkle and open the balloon path."},
+    {speaker:"Hammad", text:"Okay okay, more cute things. I can do this."}
+  ]);
+  if (t === "flowers") showDialogue([
+    {speaker:"Forest", text:"The balloons float away and flower platforms bloom ahead."},
+    {speaker:"Hammad", text:"Flowers too? This forest is being suspiciously adorable."}
+  ]);
+  if (t === "wizard") showDialogue([
+    {speaker:"Forest", text:"A purple wizard appears near the end of the garden."},
+    {speaker:"Hammad", text:"Why is there a wizard here? Should I be concerned?"}
+  ]);
+  if (t === "susubumbers") showDialogue([
+    {speaker:"Forest", text:"The wizard opens the silly green path."},
+    {speaker:"Mission", text:"Collect Susubumbers to reach Dambolino."},
+    {speaker:"Hammad", text:"Susubumbers? Like cucumbers but emotionally unstable? Fine."}
+  ]);
+  if (t === "final") showDialogue([
+    {speaker:"Forest", text:"The susubumbers glow. A cake is waiting at the end of the forest."},
+    {speaker:"Hammad", text:"Wait... this feels like the final boss of cuteness."}
+  ]);
+}
+
+function rectsTouch(a,b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function updatePlayer() {
+  const level = levels[levelIndex];
+
+  player.vx = 0;
+  if (keys["ArrowLeft"] || keys["a"] || keys["A"]) {
+    player.vx = -player.speed;
+    player.facing = -1;
+  }
+  if (keys["ArrowRight"] || keys["d"] || keys["D"]) {
+    player.vx = player.speed;
+    player.facing = 1;
+  }
+  if ((keys[" "] || keys["ArrowUp"] || keys["w"] || keys["W"]) && player.onGround) {
+    player.vy = -player.jump;
+    player.onGround = false;
+  }
+
+  player.vy += 0.55;
+  if (player.vy > 14) player.vy = 14;
+
+  player.x += player.vx;
+  if (player.x < 0) player.x = 0;
+
+  player.y += player.vy;
+  player.onGround = false;
+
+  for (const p of level.platforms) {
+    const box = {x:player.x, y:player.y, w:player.w, h:player.h};
+    if (rectsTouch(box, p)) {
+      if (player.vy >= 0 && player.y + player.h - player.vy <= p.y + 8) {
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+      }
+    }
+  }
+
+  if (player.y > H + 100) {
+    player.x = 80;
+    player.y = 380;
+    player.vy = 0;
+  }
+
+  checkCollectibles();
+  checkNPC();
+
+  if (player.x > W - 45 && level.complete) {
+    nextLevel();
+  } else if (player.x > W - 45 && !level.complete) {
+    player.x = W - 45;
+    if (level.type === "hearts") showMessage("Collect all 5 hearts first.", "Mission");
+    else if (level.type === "balloons") showMessage("Collect all 5 balloons first.", "Mission");
+    else if (level.type === "flowers") showMessage("Collect all 5 flowers first.", "Mission");
+    else if (level.type === "susubumbers") showMessage("Collect all 6 susubumbers first.", "Mission");
+    else showMessage("Meet the person on this screen first.", "Mission");
+  }
+}
+
+function checkCollectibles() {
+  const level = levels[levelIndex];
+  for (const c of level.collectibles) {
+    if (c.got) continue;
+
+    const itemBox = {x:c.x-18, y:c.y-18, w:36, h:36};
+    const playerBox = {x:player.x, y:player.y, w:player.w, h:player.h};
+
+    if (rectsTouch(playerBox, itemBox)) {
+      c.got = true;
+
+      if (c.type === "heart") {
+        collectedHearts++;
+        if (collectedHearts >= 5) {
+          collectedGifts.hearts = true;
+          level.complete = true;
+          showDialogue([
+            {speaker:"Hammad", text:"I found all the hearts! This forest clearly likes me."},
+            {speaker:"Forest", text:"Walk to the right. The balloon path is open."}
+          ]);
+        }
+      }
+
+      if (c.type === "balloon") {
+        collectedBalloons++;
+        if (collectedBalloons >= 5) {
+          collectedGifts.balloons = true;
+          level.complete = true;
+          showDialogue([
+            {speaker:"Hammad", text:"All balloons collected. Birthday vibes secured."},
+            {speaker:"Forest", text:"Walk to the right. The flower climb is waiting."}
+          ]);
+        }
+      }
+
+      if (c.type === "flower") {
+        collectedFlowers++;
+        if (collectedFlowers >= 5) {
+          collectedGifts.flowers = true;
+          level.complete = true;
+          showDialogue([
+            {speaker:"Hammad", text:"Aww, these flowers are cute."},
+            {speaker:"Forest", text:"Walk to the right. Someone magical is waiting."}
+          ]);
+        }
+      }
+
+      if (c.type === "susubumber") {
+        collectedSusubumbers++;
+        if (collectedSusubumbers >= 6) {
+          collectedGifts.susubumbers = true;
+          level.complete = true;
+          showDialogue([
+            {speaker:"Hammad", text:"I have collected all the susubumbers. I will never be the same again."},
+            {speaker:"Forest", text:"Walk to the right and reach Dambolino."}
+          ]);
+        }
+      }
+    }
+  }
+}
+
+function checkNPC() {
+  const level = levels[levelIndex];
+  if (!level.npc || level.complete) return;
+
+  const npcBox = {x: level.npc.x - 24, y: level.npc.y - 55, w: 54, h: 70};
+  const playerBox = {x:player.x, y:player.y, w:player.w, h:player.h};
+
+  if (!rectsTouch(playerBox, npcBox)) return;
+
+  level.complete = true;
+
+  if (level.type === "wizard") {
+    collectedGifts.wizard = true;
+    showDialogue([
+      {speaker:"Hammad", text:"Hello, mysterious purple person."},
+      {speaker:"Wizard", text:"Hello Bambolino! Dambolino is waiting with something special for you."},
+      {speaker:"Hammad", text:"Dambolino? That sounds important and slightly dangerous."},
+      {speaker:"Wizard", text:"Move forward. But first, collect susubumbers for Dambolino."},
+      {speaker:"Hammad", text:"Of course. A normal birthday forest activity."}
+    ]);
+  }
+
+  if (level.type === "final") {
+    collectedGifts.cake = true;
+    createHeartExplosion();
+    createConfetti();
+    showDialogue([
+      {speaker:"Hammad", text:"Oh Subul! What are you doing here!"},
+      {speaker:"Subul", text:"Happy Birthday Dear Hammad!"},
+      {speaker:"Subul", text:"I made this game for you. I know it's not much, but I hope it's special and will remain with you forever."},
+      {speaker:"Subul", text:"Mwah! May you achieve everything you want in life. HAPPY BIRTHDAY MY BAMBOLINO."},
+      {speaker:"Hammad", text:"Awww thank you so much, means a lot."},
+      {speaker:"Subul", text:"Now go eat your Luna Lupas."},
+      {speaker:"Hammad", text:"Best birthday quest ever."}
+    ]);
+  }
+}
+
+function updateEffects() {
+  for (const h of finalHearts) {
+    h.x += h.vx;
+    h.y += h.vy;
+    h.vy += 0.06;
+    h.life--;
+  }
+  finalHearts = finalHearts.filter(h => h.life > 0);
+
+  for (const c of confetti) {
+    c.x += c.vx;
+    c.y += c.vy;
+    c.vy += 0.03;
+    c.rot += c.spin;
+    c.life--;
+  }
+  confetti = confetti.filter(c => c.life > 0);
+}
+
+function createHeartExplosion() {
+  finalHearts = [];
+  for (let i = 0; i < 100; i++) {
+    finalHearts.push({
+      x: 760,
+      y: 315,
+      vx: (Math.random() - 0.5) * 10,
+      vy: (Math.random() - 0.9) * 10,
+      size: 8 + Math.random() * 20,
+      life: 220 + Math.random() * 90
+    });
+  }
+}
+
+function createConfetti() {
+  confetti = [];
+  const colors = ["#ff3b9d", "#ffd700", "#66d9ff", "#8aff8a", "#ffffff", "#ff8c42"];
+  for (let i = 0; i < 140; i++) {
+    confetti.push({
+      x: Math.random() * W,
+      y: -20 - Math.random() * 200,
+      vx: (Math.random() - 0.5) * 2,
+      vy: 1 + Math.random() * 4,
+      size: 5 + Math.random() * 8,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rot: Math.random() * 6,
+      spin: (Math.random() - 0.5) * 0.2,
+      life: 300 + Math.random() * 160
+    });
+  }
+}
+
+function drawBackground(level) {
+  ctx.fillStyle = level.sky;
+  ctx.fillRect(0,0,W,H);
+
+  const grad = ctx.createRadialGradient(800,80,10,800,80,70);
+  grad.addColorStop(0,"#fff8b8");
+  grad.addColorStop(1,"rgba(255,215,0,0.05)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(800,80,70,0,Math.PI*2);
+  ctx.fill();
+
+  for (let i = 0; i < 18; i++) {
+    const x = i * 58 + 10;
+    ctx.strokeStyle = "#ffffff88";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x+25, 38 + Math.sin(frame*0.04+i)*4);
+    ctx.stroke();
+    ctx.fillStyle = ["#ffd700","#ff69b4","#8de7ff","#ffffff"][i%4];
+    ctx.beginPath();
+    ctx.arc(x+25, 42 + Math.sin(frame*0.04+i)*4, 5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  drawCloud(95,90);
+  drawCloud(375,115);
+  drawCloud(635,80);
+
+  for (let i = 0; i < 8; i++) drawTree(i * 140 + 20, 285, 0.9);
+  drawBirds();
+  drawAnimals();
+
+  for (let i = 0; i < 30; i++) {
+    const x = i * 36 + 8;
+    drawTinyFlower(x, 448 + Math.sin((frame+i)*0.05)*2);
+  }
+}
+
+function drawCloud(x,y) {
+  ctx.fillStyle = "rgba(255,255,255,0.82)";
+  ctx.beginPath();
+  ctx.arc(x,y,22,0,Math.PI*2);
+  ctx.arc(x+24,y-8,28,0,Math.PI*2);
+  ctx.arc(x+55,y,22,0,Math.PI*2);
+  ctx.fillRect(x,y-5,55,25);
+}
+
+function drawTree(x,y,s) {
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(s,s);
+  ctx.fillStyle = "#8b5a4a";
+  ctx.fillRect(30,80,28,105);
+
+  ctx.fillStyle = "#ff8ec5";
+  ctx.beginPath();
+  ctx.arc(44,70,48,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffb6d8";
+  ctx.beginPath();
+  ctx.arc(15,92,34,0,Math.PI*2);
+  ctx.arc(75,95,34,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffd700";
+  ctx.beginPath();
+  ctx.arc(44,62,6,0,Math.PI*2);
+  ctx.arc(24,90,5,0,Math.PI*2);
+  ctx.arc(66,88,5,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawBirds() {
+  ctx.strokeStyle = "#7b255c";
+  ctx.lineWidth = 3;
+  for (let i=0; i<5; i++) {
+    const x = 90 + i*165 + Math.sin(frame*0.02+i)*16;
+    const y = 145 + Math.sin(frame*0.035+i)*12;
+    ctx.beginPath();
+    ctx.arc(x, y, 10, Math.PI*1.1, Math.PI*1.9);
+    ctx.arc(x+20, y, 10, Math.PI*1.1, Math.PI*1.9);
+    ctx.stroke();
+  }
+}
+
+function drawAnimals() {
+  const bx = 70 + Math.sin(frame*0.03)*12;
+  const by = 444;
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.ellipse(bx, by, 16, 10, 0, 0, Math.PI*2);
+  ctx.arc(bx+13, by-7, 9, 0, Math.PI*2);
+  ctx.ellipse(bx+10, by-20, 4, 13, -0.2, 0, Math.PI*2);
+  ctx.ellipse(bx+19, by-20, 4, 13, 0.2, 0, Math.PI*2);
+  ctx.fill();
+
+  const cx = 880 + Math.sin(frame*0.025)*10;
+  const cy = 445;
+  ctx.fillStyle = "#ffd58c";
+  ctx.beginPath();
+  ctx.arc(cx, cy-12, 12, 0, Math.PI*2);
+  ctx.moveTo(cx-8, cy-22);
+  ctx.lineTo(cx-14, cy-33);
+  ctx.lineTo(cx-2, cy-24);
+  ctx.moveTo(cx+8, cy-22);
+  ctx.lineTo(cx+14, cy-33);
+  ctx.lineTo(cx+2, cy-24);
+  ctx.fill();
+  ctx.fillRect(cx-14, cy-8, 28, 14);
+}
+
+function drawPlatforms(level) {
+  for (const p of level.platforms) {
+    ctx.fillStyle = "#69b96f";
+    roundRect(p.x, p.y, p.w, p.h, 12, true);
+    ctx.fillStyle = "#b9f2a5";
+    roundRect(p.x, p.y, p.w, 8, 8, true);
+    ctx.fillStyle = "#ffd45a";
+    ctx.fillRect(p.x+8, p.y+5, p.w-16, 3);
+    ctx.fillStyle = "#5a965e";
+    ctx.fillRect(p.x, p.y + p.h - 5, p.w, 5);
+  }
+}
+
+function drawCollectibles(level) {
+  for (const c of level.collectibles) {
+    if (c.got) continue;
+    const bob = Math.sin(frame * 0.08 + c.x) * 5;
+    if (c.type === "heart") drawHeart(c.x, c.y + bob, 16, "#ff2f93");
+    if (c.type === "flower") drawFlower(c.x, c.y + bob, 1);
+    if (c.type === "balloon") drawSingleBalloon(c.x, c.y + bob, 1);
+    if (c.type === "susubumber") drawSusubumber(c.x, c.y + bob, 1);
+  }
+}
+
+function drawPlayer() {
+  drawPerson(player.x + player.w/2, player.y + player.h, {
+    shirt:"#3b82f6",
+    pants:"#111111",
+    skin:"#d69a73",
+    hair:"#171010",
+    hairStyle:"wolf",
+    moustache:true,
+    label:"Hammad"
+  });
+}
+
+function drawNPC(npc) {
+  if (!npc) return;
+
+  if (npc.kind === "wizard") {
+    drawWizard(npc.x, npc.y + 58);
+  }
+
+  if (npc.kind === "subulFinal") {
+    drawPerson(npc.x, npc.y + 58, {
+      shirt:"#ff8ec5",
+      pants:"#ff8ec5",
+      dress:true,
+      skin:"#f2b890",
+      hair:"#111111",
+      hairStyle:"longStraight",
+      label:"Subul"
+    });
+    drawCake(npc.x+55, npc.y+28, 0.8);
+  }
+}
+
+function drawPerson(cx, footY, opt) {
+  const walk = Math.sin(frame * 0.18) * 4;
+
+  if (opt.dress) {
+    ctx.strokeStyle = opt.skin;
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(cx-8, footY-18);
+    ctx.lineTo(cx-10, footY);
+    ctx.moveTo(cx+8, footY-18);
+    ctx.lineTo(cx+10, footY);
+    ctx.stroke();
+
+    ctx.fillStyle = opt.shirt;
+    ctx.beginPath();
+    ctx.moveTo(cx, footY-60);
+    ctx.lineTo(cx-25, footY-15);
+    ctx.lineTo(cx+25, footY-15);
+    ctx.closePath();
+    ctx.fill();
+    roundRect(cx-15, footY-60, 30, 22, 8, true);
+  } else {
+    ctx.strokeStyle = opt.pants;
+    ctx.lineWidth = 7;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(cx-8, footY-22);
+    ctx.lineTo(cx-12, footY);
+    ctx.moveTo(cx+8, footY-22);
+    ctx.lineTo(cx+12, footY);
+    ctx.stroke();
+
+    ctx.fillStyle = opt.shirt;
+    roundRect(cx-17, footY-58, 34, 38, 8, true);
+  }
+
+  ctx.strokeStyle = opt.skin;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(cx-17, footY-48);
+  ctx.lineTo(cx-28, footY-35 + walk);
+  ctx.moveTo(cx+17, footY-48);
+  ctx.lineTo(cx+28, footY-35 - walk);
+  ctx.stroke();
+
+  ctx.fillStyle = opt.skin;
+  ctx.beginPath();
+  ctx.arc(cx, footY-78, 18, 0, Math.PI*2);
+  ctx.fill();
+
+  drawHair(cx, footY, opt);
+
+  ctx.fillStyle = "#222";
+  ctx.beginPath();
+  ctx.arc(cx-6, footY-78, 2.2, 0, Math.PI*2);
+  ctx.arc(cx+6, footY-78, 2.2, 0, Math.PI*2);
+  ctx.fill();
+
+  if (opt.moustache) {
+    ctx.fillStyle = "#171010";
+    ctx.beginPath();
+    ctx.ellipse(cx-5, footY-70, 6, 3, -0.2, 0, Math.PI*2);
+    ctx.ellipse(cx+5, footY-70, 6, 3, 0.2, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = "#7a3a3a";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, footY-73, 7, 0.1, Math.PI-0.1);
+  ctx.stroke();
+
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillStyle = "#6b2350";
+  ctx.textAlign = "center";
+  ctx.fillText(opt.label, cx, footY + 18);
+}
+
+function drawHair(cx, footY, opt) {
+  ctx.fillStyle = opt.hair || "#2a1a16";
+  const style = opt.hairStyle || "short";
+
+  if (style === "longStraight") {
+    ctx.beginPath();
+    ctx.arc(cx, footY-87, 19, Math.PI, Math.PI*2);
+    ctx.fill();
+    roundRect(cx-22, footY-85, 13, 58, 5, true);
+    roundRect(cx+9, footY-85, 13, 58, 5, true);
+    ctx.fillRect(cx-18, footY-91, 36, 14);
+  } else if (style === "wolf") {
+    ctx.beginPath();
+    ctx.arc(cx, footY-88, 18, Math.PI, Math.PI*2);
+    ctx.fill();
+    for (let i=-2; i<=2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(cx+i*8, footY-91);
+      ctx.lineTo(cx+i*8-5, footY-76 + Math.abs(i)*3);
+      ctx.lineTo(cx+i*8+5, footY-78 + Math.abs(i)*3);
+      ctx.fill();
+    }
+    roundRect(cx-19, footY-84, 8, 32, 4, true);
+    roundRect(cx+11, footY-84, 8, 32, 4, true);
+  } else {
+    ctx.beginPath();
+    ctx.arc(cx, footY-87, 18, Math.PI, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawWizard(cx, footY) {
+  const bob = Math.sin(frame * 0.06) * 2;
+  ctx.save();
+  ctx.translate(cx, bob);
+
+  ctx.fillStyle = "#7c3aed";
+  ctx.beginPath();
+  ctx.moveTo(0, footY-96);
+  ctx.lineTo(-20, footY-68);
+  ctx.lineTo(20, footY-68);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#ffd700";
+  ctx.fillRect(-17, footY-72, 34, 5);
+
+  ctx.fillStyle = "#6d28d9";
+  ctx.beginPath();
+  ctx.moveTo(0, footY-60);
+  ctx.lineTo(-28, footY);
+  ctx.lineTo(28, footY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#f2b890";
+  ctx.beginPath();
+  ctx.arc(0, footY-72, 17, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.moveTo(-10, footY-61);
+  ctx.lineTo(10, footY-61);
+  ctx.lineTo(0, footY-35);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#222";
+  ctx.beginPath();
+  ctx.arc(-5, footY-74, 2, 0, Math.PI*2);
+  ctx.arc(5, footY-74, 2, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.strokeStyle = "#8b5a2b";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(34, footY-52);
+  ctx.lineTo(48, footY-5);
+  ctx.stroke();
+  ctx.fillStyle = "#ffd700";
+  ctx.beginPath();
+  ctx.arc(32, footY-55, 7, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillStyle = "#6b2350";
+  ctx.textAlign = "center";
+  ctx.fillText("Wizard", 0, footY + 18);
+  ctx.restore();
+}
+
+function drawHeart(x,y,size,color) {
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(size/20,size/20);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, 8);
+  ctx.bezierCurveTo(-20, -5, -10, -22, 0, -10);
+  ctx.bezierCurveTo(10, -22, 20, -5, 0, 8);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFlower(x,y,s) {
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(s,s);
+  ctx.fillStyle = "#66aa66";
+  ctx.fillRect(-2,5,4,18);
+  ctx.fillStyle = "#ff68b3";
+  for (let i = 0; i < 6; i++) {
+    ctx.save();
+    ctx.rotate(i * Math.PI / 3);
+    ctx.beginPath();
+    ctx.ellipse(0,-10,7,12,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = "#fff176";
+  ctx.beginPath();
+  ctx.arc(0,0,6,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawTinyFlower(x,y) {
+  ctx.fillStyle = "#ff6fb7";
+  ctx.beginPath();
+  ctx.arc(x,y,3,0,Math.PI*2);
+  ctx.arc(x+5,y,3,0,Math.PI*2);
+  ctx.arc(x+2.5,y-4,3,0,Math.PI*2);
+  ctx.fill();
+}
+
+function drawSingleBalloon(x,y,s) {
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(s,s);
+  const colors = ["#ff3b9d", "#ffd700", "#66d9ff", "#8aff8a"];
+  ctx.fillStyle = colors[Math.abs(Math.floor(x+y)) % colors.length];
+  ctx.beginPath();
+  ctx.ellipse(0,0,13,17,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = "#777";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0,17);
+  ctx.lineTo(0,38);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBalloons(x,y,s) {
+  const colors = ["#ff3b9d","#ffd700","#66d9ff","#8aff8a"];
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(s,s);
+  for (let i=0; i<4; i++) {
+    const bx = (i-1.5)*16;
+    const by = Math.sin(frame*0.04+i)*5;
+    ctx.strokeStyle = "#777";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0,55);
+    ctx.lineTo(bx,by+20);
+    ctx.stroke();
+    ctx.fillStyle = colors[i];
+    ctx.beginPath();
+    ctx.ellipse(bx,by,12,16,0,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawSusubumber(x,y,s) {
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(Math.sin(frame*0.06+x)*0.2);
+  ctx.scale(s,s);
+  ctx.fillStyle = "#4ade80";
+  ctx.beginPath();
+  ctx.ellipse(0,0,10,24,0.55,0,Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = "#16803c";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-5,-18);
+  ctx.lineTo(5,18);
+  ctx.moveTo(0,-20);
+  ctx.lineTo(8,14);
+  ctx.stroke();
+  ctx.fillStyle = "#b7f7c7";
+  for (let i=0; i<5; i++) {
+    ctx.beginPath();
+    ctx.arc(-2 + (i%2)*6, -14 + i*7, 2, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCake(x,y,s) {
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(s,s);
+  ctx.fillStyle = "#fff";
+  roundRect(-30,5,60,28,8,true);
+  ctx.fillStyle = "#ff8ec5";
+  roundRect(-34,24,68,25,8,true);
+  ctx.fillStyle = "#ffd700";
+  ctx.fillRect(-20,-15,6,22);
+  ctx.fillRect(-3,-18,6,25);
+  ctx.fillRect(14,-15,6,22);
+  ctx.fillStyle = "#ff6b00";
+  ctx.beginPath();
+  ctx.arc(-17,-18,4,0,Math.PI*2);
+  ctx.arc(0,-21,4,0,Math.PI*2);
+  ctx.arc(17,-18,4,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSoundButton() {
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  roundRect(800, 95, 142, 38, 14, true);
+  ctx.strokeStyle = "#e3a400";
+  ctx.lineWidth = 3;
+  roundRect(800, 95, 142, 38, 14, false);
+
+  ctx.fillStyle = "#7b255c";
+  ctx.font = "bold 15px Trebuchet MS";
+  ctx.textAlign = "center";
+  ctx.fillText(soundOn ? "Sound: ON" : "Sound: OFF", 871, 119);
+}
+
+function drawHUD(level) {
+  ctx.fillStyle = "rgba(255, 248, 220, 0.93)";
+  roundRect(14, 12, 560, 72, 16, true);
+  ctx.strokeStyle = "#e3a400";
+  ctx.lineWidth = 3;
+  roundRect(14, 12, 560, 72, 16, false);
+
+  ctx.fillStyle = "#7b255c";
+  ctx.font = "bold 18px Trebuchet MS";
+  ctx.textAlign = "left";
+  ctx.fillText(level.name, 32, 40);
+
+  ctx.font = "bold 15px Trebuchet MS";
+  ctx.fillStyle = "#9a3b6d";
+  ctx.fillText(level.mission, 32, 65);
+
+  ctx.fillStyle = "rgba(255, 248, 220, 0.93)";
+  roundRect(690, 12, 252, 72, 16, true);
+  ctx.strokeStyle = "#e3a400";
+  ctx.lineWidth = 3;
+  roundRect(690, 12, 252, 72, 16, false);
+
+  ctx.fillStyle = "#7b255c";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.fillText("Hearts: " + collectedHearts + "/5", 710, 34);
+  ctx.fillText("Balloons: " + collectedBalloons + "/5", 710, 53);
+  ctx.fillText("Susubumbers: " + collectedSusubumbers + "/6", 710, 72);
+
+  let icons = "";
+  if (collectedGifts.hearts) icons += "💗 ";
+  if (collectedGifts.balloons) icons += "🎈 ";
+  if (collectedGifts.flowers) icons += "🌸 ";
+  if (collectedGifts.wizard) icons += "🪄 ";
+  if (collectedGifts.susubumbers) icons += "🥒 ";
+  if (collectedGifts.cake) icons += "🎂 ";
+  ctx.fillText("Gifts: " + icons, 815, 52);
+}
+
+function drawMessage() {
+  if (messageTimer <= 0 || !messageText) return;
+
+  ctx.fillStyle = "rgba(123, 37, 92, 0.93)";
+  roundRect(70, 382, 820, 132, 20, true);
+
+  ctx.strokeStyle = "#ffd700";
+  ctx.lineWidth = 4;
+  roundRect(70, 382, 820, 132, 20, false);
+
+  ctx.fillStyle = "#ffd700";
+  ctx.font = "bold 18px Trebuchet MS";
+  ctx.textAlign = "left";
+  ctx.fillText(messageSpeaker ? messageSpeaker + ":" : "Message:", 105, 414);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 20px Trebuchet MS";
+  ctx.textAlign = "center";
+  wrapText(messageText, W/2, 445, 740, 28);
+
+  ctx.fillStyle = "#ffd700";
+  ctx.font = "bold 14px Trebuchet MS";
+  ctx.textAlign = "right";
+  ctx.fillText("Click / Enter for next →", 860, 500);
+
+  messageTimer--;
+  if (messageTimer === 0 && dialogueQueue.length > 0) showNextDialogue();
+}
+
+function drawExitHint(level) {
+  if (!level.complete) return;
+  ctx.fillStyle = "#ffffff";
+  roundRect(W-160, 105, 130, 42, 16, true);
+  ctx.strokeStyle = "#ff4fa3";
+  ctx.lineWidth = 3;
+  roundRect(W-160, 105, 130, 42, 16, false);
+  ctx.fillStyle = "#ff2f93";
+  ctx.font = "bold 18px Trebuchet MS";
+  ctx.textAlign = "center";
+  ctx.fillText("Go right →", W-95, 132);
+}
+
+function drawFinalEffects() {
+  for (const h of finalHearts) drawHeart(h.x, h.y, h.size, "#ff2f93");
+
+  for (const c of confetti) {
+    ctx.save();
+    ctx.translate(c.x,c.y);
+    ctx.rotate(c.rot);
+    ctx.fillStyle = c.color;
+    ctx.fillRect(-c.size/2,-c.size/2,c.size,c.size*0.65);
+    ctx.restore();
+  }
+
+  if (levels[levelIndex] && levels[levelIndex].type === "final" && levels[levelIndex].complete) {
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    roundRect(220, 86, 520, 68, 24, true);
+    ctx.strokeStyle = "#ffd700";
+    ctx.lineWidth = 4;
+    roundRect(220, 86, 520, 68, 24, false);
+    ctx.fillStyle = "#ff2f93";
+    ctx.font = "bold 42px Trebuchet MS";
+    ctx.textAlign = "center";
+    ctx.fillText("HAPPY BIRTHDAY!", W/2, 132);
+  }
+}
+
+function drawTitle() {
+  const grad = ctx.createLinearGradient(0,0,W,H);
+  grad.addColorStop(0,"#ffc2e0");
+  grad.addColorStop(0.5,"#ffd6ec");
+  grad.addColorStop(1,"#fff0b8");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  for (let i = 0; i < 24; i++) {
+    drawHeart(50 + i*42, 125 + Math.sin(frame*0.04+i)*14, 10 + (i%3)*2, ["#ff2f93","#ffd700","#ffffff"][i%3]);
+  }
+
+  drawCloud(100,75);
+  drawCloud(690,90);
+
+  for (let i = 0; i < 7; i++) drawTree(i * 145 + 20, 285, 1);
+
+  drawBalloons(165,245,1.2);
+  drawBalloons(795,250,1.2);
+  drawCake(W/2,395,1.15);
+
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  roundRect(105, 145, 750, 120, 30, true);
+  ctx.strokeStyle = "#ffd700";
+  ctx.lineWidth = 5;
+  roundRect(105, 145, 750, 120, 30, false);
+
+  ctx.fillStyle = "#7b255c";
+  ctx.textAlign = "center";
+  ctx.font = "bold 51px Trebuchet MS";
+  ctx.fillText("Hammad's Forest Adventure", W/2, 195);
+
+  ctx.font = "bold 25px Trebuchet MS";
+  ctx.fillStyle = "#b88900";
+  ctx.fillText("Made by Subul", W/2, 238);
+
+  ctx.fillStyle = "#ffffff";
+  roundRect(W/2-100, 305, 200, 64, 22, true);
+  ctx.strokeStyle = "#ff4fa3";
+  ctx.lineWidth = 4;
+  roundRect(W/2-100, 305, 200, 64, 22, false);
+
+  ctx.fillStyle = "#ff2f93";
+  ctx.font = "bold 31px Trebuchet MS";
+  ctx.fillText("PLAY", W/2, 347);
+
+  ctx.fillStyle = "#7b255c";
+  ctx.font = "18px Trebuchet MS";
+  ctx.fillText("Use Arrow Keys or A/D to move. Space / Up / W to jump.", W/2, 445);
+
+  drawSoundButton();
+}
+
+function drawEnding() {
+  const grad = ctx.createLinearGradient(0,0,W,H);
+  grad.addColorStop(0,"#ffc2e0");
+  grad.addColorStop(0.5,"#fff0b8");
+  grad.addColorStop(1,"#ffdaee");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  for (let i = 0; i < 90; i++) {
+    drawHeart((i * 97 + frame * 1.5) % W, (i * 53 + Math.sin(frame*0.03+i)*20) % H, 10 + (i % 4) * 4, ["#ff2f93","#ffd700","#ffffff","#ff8ec5"][i%4]);
+  }
+
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  roundRect(110, 95, 740, 340, 28, true);
+  ctx.strokeStyle = "#ffd700";
+  ctx.lineWidth = 5;
+  roundRect(110, 95, 740, 340, 28, false);
+
+  ctx.fillStyle = "#ff2f93";
+  ctx.textAlign = "center";
+  ctx.font = "bold 50px Trebuchet MS";
+  ctx.fillText("The End", W/2, 175);
+
+  ctx.fillStyle = "#7b255c";
+  ctx.font = "bold 34px Trebuchet MS";
+  ctx.fillText("Happy Birthday Hammad!", W/2, 235);
+
+  ctx.font = "22px Trebuchet MS";
+  ctx.fillText("Hope you enjoyed your little adventure.", W/2, 290);
+
+  ctx.font = "bold 22px Trebuchet MS";
+  ctx.fillText("Made with love by Subul", W/2, 340);
+
+  ctx.font = "18px Trebuchet MS";
+  ctx.fillText("Refresh the page to play again.", W/2, 390);
+}
+
+function wrapText(text, x, y, maxWidth, lineHeight) {
+  const words = text.split(" ");
+  let line = "";
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + words[n] + " ";
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && n > 0) {
+      ctx.fillText(line, x, y);
+      line = words[n] + " ";
+      y += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  ctx.fillText(line, x, y);
+}
+
+function roundRect(x, y, w, h, r, fill) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  else ctx.stroke();
+}
+
+function gameLoop() {
+  frame++;
+
+  if (gameState === "title") drawTitle();
+
+  if (gameState === "playing") {
+    const level = levels[levelIndex];
+    updatePlayer();
+    updateEffects();
+
+    drawBackground(level);
+    drawPlatforms(level);
+    drawCollectibles(level);
+    drawNPC(level.npc);
+    drawPlayer();
+    drawFinalEffects();
+    drawHUD(level);
+    drawSoundButton();
+    drawExitHint(level);
+    drawMessage();
+
+    if (level.type === "final" && level.complete && messageTimer <= 0 && dialogueQueue.length === 0) {
+      setTimeout(() => { if (gameState === "playing") gameState = "ending"; }, 1200);
+    }
+  }
+
+  if (gameState === "ending") drawEnding();
+
+  requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener("keydown", e => {
+  keys[e.key] = true;
+
+  if (e.key === "m" || e.key === "M") toggleSound();
+
+  if (messageTimer > 0 && (e.key === "Enter" || e.key === "Shift")) {
+    messageTimer = 1;
+  }
+});
+
+window.addEventListener("keyup", e => {
+  keys[e.key] = false;
+});
+
+canvas.addEventListener("click", e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  if (mx >= 800 && mx <= 942 && my >= 95 && my <= 133) {
+    toggleSound();
+    return;
+  }
+
+  if (gameState === "title") {
+    if (mx >= W/2-100 && mx <= W/2+100 && my >= 305 && my <= 369) startGame();
+    return;
+  }
+
+  if (gameState === "playing" && messageTimer > 0) {
+    messageTimer = 1;
+  }
+});
+
+gameLoop();
+
+} catch (err) {
+  const box = document.getElementById("errorBox");
+  box.style.display = "block";
+  box.textContent = "Game error: " + err.message + "\n\nIf you see this, send this exact message back.";
+}
+</script>
+
+</body>
+</html>
